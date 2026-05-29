@@ -3034,11 +3034,24 @@ func (f *Fs) Move(ctx context.Context, src fs.Object, remote string) (fs.Object,
 		remote = remote[:len(remote)-len(ext)]
 	}
 
-	_, srcParentID, err := srcObj.fs.dirCache.FindPath(ctx, src.Remote(), false)
-	if err != nil {
-		return nil, err
+	// Find the ID of the parent to remove the file from.
+	//
+	// Prefer the source object's actual parent if known. Looking the
+	// parent up from the path via the directory cache can resolve to the
+	// wrong directory when there are duplicate directories with the same
+	// name, which leaves the file with more than one parent and fails on
+	// shared drives with a teamDrivesParentLimit error (#9472).
+	var srcParentID string
+	if len(srcObj.parents) == 1 {
+		srcParentID = srcObj.parents[0]
+	} else {
+		var err error
+		_, srcParentID, err = srcObj.fs.dirCache.FindPath(ctx, src.Remote(), false)
+		if err != nil {
+			return nil, err
+		}
+		srcParentID = actualID(srcParentID)
 	}
-	srcParentID = actualID(srcParentID)
 
 	// Temporary Object under construction
 	dstInfo, err := f.createFileInfo(ctx, remote, src.ModTime(ctx))
